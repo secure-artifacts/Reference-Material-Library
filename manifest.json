@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "素材参考库",
+  "version": "1.2.0",
+  "description": "本地优先的素材/链接参考资料库：分类管理、九宫格排版预览、截图画廊、Facebook/YouTube 链接解析与本地硬盘直读直写。",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    },
+    "default_title": "打开素材参考库"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "tabs",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "https://api.github.com/*",
+    "https://graph.facebook.com/*",
+    "https://i.ytimg.com/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self';"
+  }
+}

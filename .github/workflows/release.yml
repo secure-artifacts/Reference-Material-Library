@@ -1,0 +1,47 @@
+name: Release
+
+# 只由 tag push 触发（约束①：不能用 release:published / workflow_dispatch / 分支 push 触发）
+on:
+  push:
+    tags:
+      - 'v*'
+
+# 三个权限必须全部小写
+permissions:
+  id-token: write      # OIDC token，用于 Attestation 签名
+  contents: write       # 允许创建 GitHub Release
+  attestations: write   # 允许生成和存储 Attestation 记录
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Package extension
+        run: |
+          mkdir -p dist
+          zip -r "dist/reference-material-library-${{ github.ref_name }}.zip" \
+            manifest.json \
+            background.js \
+            main.js \
+            wrappers.js \
+            dispatcher.js \
+            index.html \
+            icons \
+            lib
+
+      # 约束④：subject-path 必须指向最终打包的 zip，不能指向源码目录
+      - name: Attest Build Provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'dist/*.zip'
+
+      # 约束②③：使用默认 GITHUB_TOKEN，由 github-actions[bot] 自动上传，
+      # 禁止在网页手动创建/替换 Release 或 asset
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
