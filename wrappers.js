@@ -265,4 +265,25 @@ window.__Handlers = {
   __h130: __h130,
   __h131: __h131,
   __h132: __h132,
+
+  // ==== 素材分享服务 UI 事件绑定 ====
+  h_shareApiKeyChange: function (event) { updateSetting('shareApiKey', this.value.trim()); },
+  h_openRequestKeyModal: function (event) { openRequestKeyModal(); }, // 🆕 v1.3：自助申请密钥
+  h_closeRequestKeyModal: function (event) { closeRequestKeyModal(); },
+  h_confirmRequestKeyModal: function (event) { confirmRequestKeyModal(); },
+  h_shareCardImg: function (event) { handleCardImgCtx('share'); },
+  h_shareAllCardImg: function (event) { handleCardImgCtx('shareAll'); }, // 🆕 v1.3：主页卡片右键"整个素材打包分享"
+  h_exportWholeItem: function (event) { const it = DB.items.find(i => i.id === ctxCardId); if (it) exportWholeItem(it); }, // 🆕 v1.3：主页卡片右键"打包导出整个素材"
+  h_shareWholeItemCard: function (event) { const it = DB.items.find(i => i.id === ctxCardId); if (it) shareWholeItem(it); }, // 🆕 v1.3：主页卡片右键"分享整个素材"
+  h_shareNine: function (event) { handleNineCtx('share'); },
+  h_shareNineSelected: function (event) { shareNineGridSelected(); }, // 🆕 v1.3：九宫格工具栏"分享所选"按钮
+  h_closeShareModal: function (event) { closeShareResultModal(); },
+  h_copyShareLink: function (event) { copyShareResultLink(); },
+  h_openShareLink: function (event) { openShareResultLink(); },
+  h_closeSharePwdModal: function (event) { closeSharePasswordModal(); }, // 🆕 v1.3：分享密码弹窗-取消
+  h_confirmSharePwdModal: function (event) { confirmSharePasswordModal(); }, // 🆕 v1.3：分享密码弹窗-确认并生成链接
+  h_searchInput: function (event) { if (typeof renderLibraryGrid === 'function') renderLibraryGrid(); }, // 🆕 v1.3：修复全局搜索框此前完全没有绑定事件的 bug
+  h_cancelConfirmDelete: function (event) { cancelConfirmDeleteModal(); }, // 🆕 v1.3：永久删除确认弹窗-取消
+  h_confirmConfirmDelete: function (event) { confirmConfirmDeleteModal(); }, // 🆕 v1.3：永久删除确认弹窗-确定
+  h_refreshDiskUsage: function (event) { computeAndRenderDiskUsage(); }, // 🆕 v1.3：手动刷新本地占用空间统计
 };

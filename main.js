@@ -7,15 +7,22 @@ let DB = {
     blockMainland: true, thumbSize: 180, nineCols: '4', nineRatio: '1/1',
     theme: 'auto', pin: ''
   },
-  version: '1.2'
+  version: '1.3'
 };
 
 /* ═══════════════════════════════════════════════════════
    APP CONFIG (版本与远程更新配置)
 ═══════════════════════════════════════════════════════ */
-const APP_VERSION = '1.2';
+const APP_VERSION = '1.3';
 // ⬇ 填入你的 GitHub 用户名/仓库名，例如 'buku-lhy/cailiao-ku'
 const GITHUB_REPO = 'secure-artifacts/Reference-Material-Library';
+
+// ==== 素材分享服务 (Cloudflare Workers + D1 + Backblaze B2) 对接配置 ====
+const SHARE_API_BASE = 'https://material-share.lhy-material-lib.workers.dev';
+const SHARE_UPLOAD_PATH = '/upload'; // ⚠️ 若后端实际路由不是 /upload（例如 /api/v1/upload），只需改这一行
+const SHARE_ALBUM_PATH = '/api/album'; // 🆕 v1.3：多图相册分享接口，需后端配合新增（见设计文档）
+const SHARE_ALBUM_CONCURRENCY = 3; // 🆕 v1.3：多图并发上传的最大并发数，避免一次性打满带宽/触发限流
+const SHARE_REQUEST_KEY_PATH = '/request-key'; // 🆕 v1.3：自助申请上传密钥，免去线下私聊管理员要密钥的步骤
 
 // 创作者工作台专属数据隔离池 (workspace.json)
 let WS = {
@@ -107,11 +114,18 @@ function isDuplicateItemTitle(title, categoryId, excludeId) {
 }
 
 // 全局微提示气泡
-function showToast(msg, type='success') {
-  const c = document.getElementById('toast-container'), t = document.createElement('div');
+function showToast(msg, type='success', opts) {
+  opts = opts || {};
+  const severe = opts.severe === true || type === 'error'; // 🆕 v1.3：错误类默认视为严重提示，额外多停留 2 秒
+  const duration = 2900 + (severe ? 2000 : 0);
+  const c = document.getElementById('toast-container');
+  // 🆕 v1.3：同时最多保留 4 条气泡，超出时把最旧的挤掉，避免连续报错时气泡无限堆叠
+  const existing = c.querySelectorAll('.toast');
+  if (existing.length >= 4) existing[0].remove();
+  const t = document.createElement('div');
   t.className = 'toast ' + type;
   t.innerHTML = `<i class="ti ${type==='error'?'ti-alert-circle':type==='warning'?'ti-alert-triangle':'ti-check'}"></i> ${msg}`;
-  c.appendChild(t); setTimeout(()=>t.remove(), 2900);
+  c.appendChild(t); setTimeout(()=>t.remove(), duration);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -226,6 +240,41 @@ async function setupWorkspace() {
   if(setPath) setPath.textContent = dirHandle.name;
   
   await loadFromFolder();
+  computeAndRenderDiskUsage(); // 🆕 v1.3：连接成功后异步统计一次本地占用空间，不阻塞主流程
+}
+
+// 🆕 v1.3：递归统计已连接文件夹的总占用空间，GB/MB 自动切换单位（不满 1GB 显示 MB）
+function formatBytesAuto(bytes) {
+  const gb = bytes / (1024 ** 3);
+  if (gb >= 1) return gb.toFixed(2) + ' GB';
+  const mb = bytes / (1024 ** 2);
+  return mb.toFixed(1) + ' MB';
+}
+async function getDirSizeRecursive(handle) {
+  let total = 0;
+  for await (const entry of handle.values()) {
+    if (entry.kind === 'file') {
+      try { const f = await entry.getFile(); total += f.size; } catch (e) {}
+    } else if (entry.kind === 'directory') {
+      try { total += await getDirSizeRecursive(entry); } catch (e) {}
+    }
+  }
+  return total;
+}
+let _diskUsageComputing = false;
+async function computeAndRenderDiskUsage() {
+  if (!dirHandle || _diskUsageComputing) return;
+  _diskUsageComputing = true;
+  const el = document.getElementById('disk-usage-text');
+  if (el) el.textContent = '统计中...';
+  try {
+    const bytes = await getDirSizeRecursive(dirHandle);
+    if (el) el.textContent = formatBytesAuto(bytes);
+  } catch (e) {
+    if (el) el.textContent = '统计失败';
+  } finally {
+    _diskUsageComputing = false;
+  }
 }
 
 async function restoreFolderAccess() {
@@ -480,6 +529,7 @@ async function moveFs(base, srcPath, destPath, isFile = false) {
 
 function ensureDefaults() {
   if(document.getElementById('logo-ver')) document.getElementById('logo-ver').textContent = 'v ' + APP_VERSION; // 版本号统一从 APP_VERSION 动态同步，避免手改遗漏
+  document.title = '素材参考库 v' + APP_VERSION; // 🆕 v1.3：标签页标题也一并同步，此前一直是写死的 v1.2
   if (!DB.settings) DB.settings = {};
   if (!DB.compareHistory) DB.compareHistory = []; // 兼容旧数据字段（对比模式功能已下线，此处仅防止旧存档报错）
   if (DB.settings.blockMainland === undefined) DB.settings.blockMainland = true;
@@ -489,6 +539,8 @@ function ensureDefaults() {
   if (!DB.settings.theme) DB.settings.theme = 'auto';
   if (!DB.settings.pin) DB.settings.pin = '';
   if (!DB.settings.sortMode) DB.settings.sortMode = 'default';
+  if (DB.settings.shareApiKey === undefined) DB.settings.shareApiKey = '';
+  if (!DB.settings.shareDeviceId) DB.settings.shareDeviceId = (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : uid() + uid() + uid()); // 🆕 v1.3：自助申请密钥用的本机标识，生成一次后固定不变
   const sortLbl = document.getElementById('sort-btn-label'); if (sortLbl) sortLbl.textContent = SORT_LABELS[DB.settings.sortMode] || '排序方式';
 }
 
@@ -545,10 +597,376 @@ function openSettings() {
   if(document.getElementById('set-nine-cols')) document.getElementById('set-nine-cols').value = DB.settings.nineCols;
   if(document.getElementById('set-nine-rat')) document.getElementById('set-nine-rat').value = DB.settings.nineRatio;
   if (dirHandle && document.getElementById('set-folder-path')) document.getElementById('set-folder-path').textContent = dirHandle.name;
+  if(document.getElementById('set-share-apikey')) document.getElementById('set-share-apikey').value = DB.settings.shareApiKey || '';
   
   if(document.getElementById('settings-modal')) document.getElementById('settings-modal').classList.add('show');
 }
 function closeSettings() { if(document.getElementById('settings-modal')) document.getElementById('settings-modal').classList.remove('show'); }
+
+// ============ 素材分享服务对接 (Cloudflare Workers + D1 + Backblaze B2) ============
+
+function getShareApiKey() { return (DB.settings.shareApiKey || '').trim(); }
+
+// 🆕 v1.3：自助申请上传密钥 —— 不用再私聊管理员，填个名字即可自动拿到密钥
+function openRequestKeyModal() {
+  const inp = document.getElementById('request-key-name-input');
+  if (inp) { inp.value = ''; inp.classList.remove('error'); }
+  const modal = document.getElementById('request-key-modal');
+  if (modal) modal.classList.add('show');
+  setTimeout(() => { if (inp) inp.focus(); }, 50);
+}
+function closeRequestKeyModal() {
+  const modal = document.getElementById('request-key-modal');
+  if (modal) modal.classList.remove('show');
+}
+async function confirmRequestKeyModal() {
+  const inp = document.getElementById('request-key-name-input');
+  const name = (inp ? inp.value : '').trim();
+  if (!/^[\u4e00-\u9fa5]{2,6}$/.test(name)) {
+    if (inp) inp.classList.add('error');
+    showToast('请填写 2-6 个汉字的姓名', 'warning');
+    return;
+  }
+  const btn = document.getElementById('request-key-confirm-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '申请中…'; }
+  try {
+    const resp = await fetch(SHARE_API_BASE + SHARE_REQUEST_KEY_PATH, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_id: DB.settings.shareDeviceId, name })
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      showToast('❌ ' + (data.error || '申请失败，请稍后再试'), 'error');
+      return;
+    }
+    updateSetting('shareApiKey', data.api_key);
+    if (document.getElementById('set-share-apikey')) document.getElementById('set-share-apikey').value = data.api_key;
+    closeRequestKeyModal();
+    showToast('✅ 密钥申请成功，已自动填入', 'success');
+  } catch (e) {
+    showToast('❌ 网络请求失败：' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '确认申请'; }
+  }
+}
+
+// 把 blob:/data: 形式的图片地址转换为真正的 Blob 对象
+async function urlToBlob(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('图片资源读取失败');
+  return await resp.blob();
+}
+
+// 核心上传函数：把文件 POST 给分享服务器，成功后返回分享链接字符串（失败返回 null 并已 toast 提示）
+async function shareUploadBlob(blob, filename, opts) {
+  opts = opts || {};
+  const apiKey = getShareApiKey();
+  if (!apiKey) {
+    showToast('⚠️ 请先在「系统设置」中申请分享服务的上传密钥', 'warning', { severe: true });
+    openSettings();
+    return null;
+  }
+  if (!apiKey.startsWith('mk_')) {
+    showToast('⚠️ 密钥格式看起来不太对，通常应以 mk_ 开头，请检查设置', 'warning');
+  }
+
+  const form = new FormData();
+  form.append('file', blob, filename || `share-${Date.now()}.png`);
+  if (opts.password) form.append('password', opts.password); // 🆕 v1.3：单图分享密码，后端 /upload 原生支持
+  if (opts.days) form.append('days', String(opts.days));
+
+  let resp;
+  try {
+    resp = await fetch(SHARE_API_BASE + SHARE_UPLOAD_PATH, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + apiKey },
+      body: form
+    });
+  } catch (e) {
+    showToast('❌ 网络请求失败，请检查分享服务器地址、host_permissions 或网络连接：' + e.message, 'error');
+    return null;
+  }
+
+  if (resp.status === 401 || resp.status === 403) {
+    showToast('❌ 密钥鉴权失败（' + resp.status + '），请检查「系统设置」中的分享密钥是否正确', 'error');
+    return null;
+  }
+  if (!resp.ok) {
+    let detail = '';
+    try { detail = await resp.text(); } catch (e) {}
+    showToast(`❌ 上传失败（HTTP ${resp.status}）${detail ? '：' + detail.slice(0, 80) : ''}`, 'error');
+    return null;
+  }
+
+  let data;
+  try { data = await resp.json(); } catch (e) {
+    showToast('❌ 服务器返回内容无法解析为 JSON，请检查后端接口返回格式', 'error');
+    return null;
+  }
+
+  // 兼容多种常见返回字段命名，自动寻找分享链接。
+  // 【如果自动识别失败：F12 打开控制台，查看下方打印出的 data 结构，把正确字段名加进这个数组即可】
+  const candidates = [
+    data.url, data.shareUrl, data.share_url, data.link, data.fileUrl, data.file_url,
+    data.data && (data.data.url || data.data.shareUrl || data.data.share_url || data.data.link),
+    data.result && (data.result.url || data.result.link)
+  ].filter(Boolean);
+
+  let shareUrl = candidates[0];
+
+  // 兜底方案：在整个返回体里扫描形如 http(s):// 的字符串
+  if (!shareUrl) {
+    const m = JSON.stringify(data).match(/https?:\/\/[^"\\\s]+/);
+    if (m) shareUrl = m[0];
+  }
+
+  if (!shareUrl) {
+    console.warn('[分享服务] 未能自动识别分享链接，完整返回内容：', data);
+    showToast('⚠️ 上传成功，但未能自动识别分享链接，请打开控制台(F12)查看返回内容', 'warning');
+    return null;
+  }
+  return shareUrl;
+}
+
+// 🆕 v1.3：并发上传多个 Blob，返回按输入顺序对齐的 URL 数组（上传失败的位置为 null）
+// concurrency 控制同时进行的请求数；onProgress(doneCount, total) 用于更新提示文案
+async function uploadManyBlobs(fileTasks, onProgress, opts) {
+  opts = opts || {};
+  const total = fileTasks.length;
+  const results = new Array(total).fill(null);
+  let cursor = 0, done = 0;
+  async function worker() {
+    while (cursor < total) {
+      const myIdx = cursor++;
+      const { blob, filename } = fileTasks[myIdx];
+      try { results[myIdx] = await shareUploadBlob(blob, filename, { days: opts.days }); }
+      catch (e) { results[myIdx] = null; }
+      done++;
+      if (typeof onProgress === 'function') onProgress(done, total);
+    }
+  }
+  const workers = Array.from({ length: Math.min(SHARE_ALBUM_CONCURRENCY, total) }, worker);
+  await Promise.all(workers);
+  return results;
+}
+
+// 🆕 v1.3：调用后端 /api/album 创建相册记录，引用一组已上传图片各自的 shareId，可选访问密码
+// 返回相册访问链接字符串；失败返回 null 并已 toast 提示
+async function createAlbumShare(shareIds, title, password) {
+  const apiKey = getShareApiKey();
+  if (!apiKey) {
+    showToast('⚠️ 请先在「系统设置」中申请分享服务的上传密钥', 'warning', { severe: true });
+    openSettings();
+    return null;
+  }
+  let resp;
+  try {
+    resp = await fetch(SHARE_API_BASE + SHARE_ALBUM_PATH, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: title || '', shareIds, password: password || undefined })
+    });
+  } catch (e) {
+    showToast('❌ 相册创建失败，请检查网络或分享服务器地址：' + e.message, 'error');
+    return null;
+  }
+  if (!resp.ok) {
+    let detail = ''; try { detail = await resp.text(); } catch (e) {}
+    showToast(`❌ 相册创建失败（HTTP ${resp.status}）${detail ? '：' + detail.slice(0, 80) : ''}`, 'error');
+    return null;
+  }
+  let data; try { data = await resp.json(); } catch (e) {
+    showToast('❌ 服务器返回内容无法解析为 JSON', 'error'); return null;
+  }
+  const url = data.url || (data.id ? `${SHARE_API_BASE}/album/${data.id}` : null);
+  if (!url) { showToast('⚠️ 相册创建成功，但未能识别访问链接', 'warning'); return null; }
+  return url;
+}
+
+// ============ 🆕 v1.3 分享密码弹窗：所有分享入口的统一前置步骤 ============
+// pendingShareTask：{ title, gather: async ()=>[{blob,filename}, ...] }
+let pendingShareTask = null;
+
+function openSharePasswordModal(task) {
+  pendingShareTask = task;
+  const inp = document.getElementById('share-pwd-input');
+  if (inp) inp.value = '';
+  const label = document.getElementById('share-pwd-target-label');
+  if (label) label.textContent = task.title ? `即将分享：${task.title}` : '';
+  const modal = document.getElementById('share-password-modal');
+  if (modal) modal.classList.add('show');
+}
+function closeSharePasswordModal() {
+  const m = document.getElementById('share-password-modal'); if (m) m.classList.remove('show');
+  pendingShareTask = null;
+}
+async function confirmSharePasswordModal() {
+  const task = pendingShareTask;
+  if (!task) return;
+  const pwdInp = document.getElementById('share-pwd-input');
+  const password = pwdInp ? pwdInp.value.trim() : '';
+  const daysSel = document.getElementById('share-days-select');
+  const days = daysSel ? parseInt(daysSel.value, 10) || 1 : 1; // 🆕 v1.3：链接有效期，默认 1 天，对应后端到期自动删除
+  closeSharePasswordModal();
+
+  showToast('⏳ 正在准备图片素材...', 'success');
+  let fileTasks;
+  try { fileTasks = await task.gather(); } catch (e) { showToast('❌ 读取图片失败：' + e.message, 'error'); return; }
+  if (!fileTasks || !fileTasks.length) { showToast('未找到可分享的图片', 'warning'); return; }
+
+  // 单图模式：直接走现有 /upload 接口自带的密码/有效期参数，无需相册层
+  if (task.mode === 'single') {
+    showToast('⏳ 正在上传并生成分享链接...', 'success');
+    const { blob, filename } = fileTasks[0];
+    const shareUrl = await shareUploadBlob(blob, filename, { password, days });
+    if (shareUrl) openShareResultModal(shareUrl, { count: 1, hasPassword: !!password, password });
+    return;
+  }
+
+  // 相册模式：每张图先各自上传拿到 shareId（带上同样的有效期，不带密码，密码由相册层统一把关），再打包创建相册
+  const total = fileTasks.length;
+  showToast(`⏳ 正在上传 0/${total} 张图片...`, 'success');
+  const urls = (await uploadManyBlobs(fileTasks, (done) => {
+    showToast(`⏳ 正在上传 ${done}/${total} 张图片...`, 'success');
+  }, { days })).filter(Boolean);
+
+  if (!urls.length) { showToast('❌ 图片上传失败，未能生成分享链接', 'error'); return; }
+  if (urls.length < total) showToast(`⚠️ 有 ${total - urls.length} 张图片上传失败，将仅分享其余 ${urls.length} 张`, 'warning');
+
+  const shareIds = urls.map(u => { const m = u.match(/\/s\/([a-zA-Z0-9]+)/); return m ? m[1] : null; }).filter(Boolean);
+  if (!shareIds.length) { showToast('❌ 未能从上传结果中解析出图片 ID，相册创建失败', 'error'); return; }
+
+  const albumUrl = await createAlbumShare(shareIds, task.title, password);
+  if (albumUrl) openShareResultModal(albumUrl, { count: shareIds.length, hasPassword: !!password, password });
+}
+
+// 单张图片分享（原有入口）：走 /upload 原生密码参数，属于"单图模式"
+async function generateShareLink(shot, itemTitle) {
+  if (!shot) { showToast('未找到可分享的图片', 'warning'); return; }
+  openSharePasswordModal({
+    mode: 'single',
+    title: itemTitle || '素材',
+    gather: async () => {
+      const src = window.blobCache[shot.id] || shot.dataUrl;
+      if (!src) throw new Error('图片资源未能读取，请确保已连接硬盘');
+      const blob = await urlToBlob(src);
+      return [{ blob, filename: `${sanitizeName(itemTitle || '素材')}.${shot.ext || 'jpg'}` }];
+    }
+  });
+}
+
+// 🆕 v1.3：整个素材（所有非动态图切面）打包分享为一个相册链接，属于"相册模式"
+async function shareWholeItem(item) {
+  if (!item) return;
+  const shots = (item.shots || []).filter(s => s.type !== 'reel');
+  if (!shots.length) { showToast('该素材暂无图片可分享', 'warning'); return; }
+  openSharePasswordModal({
+    mode: 'album',
+    title: item.title || '素材相册',
+    gather: async () => {
+      const tasks = [];
+      let seq = 1;
+      for (const s of shots) {
+        const src = window.blobCache[s.id] || s.dataUrl;
+        if (!src) continue;
+        const blob = await urlToBlob(src);
+        tasks.push({ blob, filename: `${sanitizeName(item.title || '素材')}_${seq}.${s.ext || 'jpg'}` });
+        seq++;
+      }
+      return tasks;
+    }
+  });
+}
+
+// 🆕 v1.3：九宫格内多选图片打包分享为一个相册链接，属于"相册模式"
+async function shareSelectedShots(item, idxs) {
+  if (!item || !idxs || !idxs.length) return;
+  const shots = idxs.map(i => item.shots[i]).filter(s => s && s.type !== 'reel');
+  if (!shots.length) { showToast('未选中任何可分享的图片', 'warning'); return; }
+  openSharePasswordModal({
+    mode: 'album',
+    title: `${item.title || '素材'}（精选 ${shots.length} 张）`,
+    gather: async () => {
+      const tasks = [];
+      let seq = 1;
+      for (const s of shots) {
+        const src = window.blobCache[s.id] || s.dataUrl;
+        if (!src) continue;
+        const blob = await urlToBlob(src);
+        tasks.push({ blob, filename: `${sanitizeName(item.title || '素材')}_精选${seq}.${s.ext || 'jpg'}` });
+        seq++;
+      }
+      return tasks;
+    }
+  });
+}
+
+// 🆕 v1.3：主页卡片右键"打包导出整个素材"——把该素材下所有非动图切面打包成 zip 下载到本地
+async function exportWholeItem(item) {
+  if (!item) return;
+  const shots = (item.shots || []).filter(s => s.type !== 'reel');
+  if (!shots.length) { showToast('该素材暂无图片可导出', 'warning'); return; }
+
+  showToast(`📦 正在打包 ${shots.length} 张图片，请稍候...`, 'success');
+  try {
+    const zip = new JSZip();
+    let fileCount = 0;
+    for (const s of shots) {
+      const url = window.blobCache[s.id] || s.dataUrl;
+      if (!url) continue;
+      let blob;
+      if (url.startsWith('blob:')) {
+        const resp = await fetch(url); blob = await resp.blob();
+      } else if (url.startsWith('data:')) {
+        const arr = url.split(','); const mime = arr[0].match(/:(.*?);/)[1];
+        const bStr = atob(arr[1]); const n = bStr.length;
+        const u8 = new Uint8Array(n); for (let k = 0; k < n; k++) u8[k] = bStr.charCodeAt(k);
+        blob = new Blob([u8], { type: mime });
+      } else continue;
+      zip.file(`${sanitizeName(item.title)}_${fileCount + 1}.${s.ext || 'jpg'}`, blob);
+      fileCount++;
+    }
+    if (!fileCount) { showToast('未能读取到任何有效图片数据', 'error'); return; }
+    const content = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(content);
+    a.download = `${sanitizeName(item.title)}-${dateStr8(Date.now())}.zip`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    showToast(`✅ 已导出 ${fileCount} 张图片`, 'success');
+  } catch (e) {
+    showToast('打包失败：' + e.message, 'error');
+  }
+}
+
+function openShareResultModal(url, meta) {
+  const box = document.getElementById('share-result-link');
+  if (box) box.textContent = url;
+  const modal = document.getElementById('share-result-modal');
+  if (modal) { modal.dataset.url = url; modal.classList.add('show'); }
+  const metaBox = document.getElementById('share-result-meta');
+  if (metaBox) {
+    const bits = [];
+    if (meta && meta.count > 1) bits.push(`📷 共 ${meta.count} 张图片`);
+    if (meta && meta.hasPassword) bits.push(`🔒 已设置访问密码：<strong>${meta.password}</strong>（请一并告知对方）`);
+    metaBox.innerHTML = bits.join(' &nbsp;·&nbsp; ');
+    metaBox.style.display = bits.length ? 'block' : 'none';
+  }
+  navigator.clipboard.writeText(url)
+    .then(() => showToast('✅ 分享链接已生成并自动复制到剪贴板'))
+    .catch(() => showToast('✅ 分享链接已生成'));
+}
+function closeShareResultModal() { const m = document.getElementById('share-result-modal'); if (m) m.classList.remove('show'); }
+function copyShareResultLink() {
+  const m = document.getElementById('share-result-modal'); const url = m && m.dataset.url;
+  if (!url) return;
+  navigator.clipboard.writeText(url).then(() => showToast('✅ 链接已复制')).catch(() => showToast('浏览器限制了剪贴板写入', 'error'));
+}
+function openShareResultLink() {
+  const m = document.getElementById('share-result-modal'); const url = m && m.dataset.url;
+  if (url) window.open(url, '_blank');
+}
 
 // UI 统一卡片图片渲染代理组件
 function getShotSrc(shot) { return window.blobCache[shot.id] || shot.dataUrl || ''; }
@@ -967,7 +1385,17 @@ document.body.addEventListener('drop', async e => {
   }
 });
 
-function pinShot(idx) { const it=DB.items.find(x=>x.id===selectedId); if(it) { it.shots.forEach((s,i)=>s.pinned=(i===idx)); renderDetailPanel(); renderLibraryGrid(); scheduleSave(); } }
+// 🆕 v1.3：设为封面时，把该图片真正移到 shots 数组最前面（而不仅仅打个 pinned 标记），
+// 这样九宫格画廊、大图浏览等任何按数组顺序展示的地方，封面图都会始终排在第一张
+function setPinnedShotAndReorder(item, idx) {
+  if (!item || !item.shots || idx < 0 || idx >= item.shots.length) return;
+  const [shot] = item.shots.splice(idx, 1);
+  shot.pinned = true;
+  item.shots.forEach(s => { s.pinned = false; });
+  item.shots.unshift(shot);
+}
+
+function pinShot(idx) { const it=DB.items.find(x=>x.id===selectedId); if(it) { setPinnedShotAndReorder(it, idx); renderDetailPanel(); renderLibraryGrid(); scheduleSave(); } }
 
 async function deleteCurrentItem(isCtx = false) {
 
@@ -1049,8 +1477,23 @@ function showContextMenu(e, menuId, id) {
   // 修复：如果当前正停留在某个具体分类目录内，主界面空白处右键不再显示"新建分类目录"，
   // 只保留"登记全新素材"（并会智能预选当前目录，见 openAddModal），避免用户重复选择目录
   if (menuId === 'ctx-grid') {
-    const newCatItem = document.querySelector('#ctx-grid .ctx-item[onclick="openAddCategoryModal()"]');
+    const newCatItem = document.querySelector('#ctx-grid .ctx-item[data-act="__h91"]');
     if (newCatItem) newCatItem.style.display = (currentFilter && currentFilter.type === 'category') ? 'none' : 'flex';
+  }
+  // 🆕 v1.3：九宫格右键菜单——多选时把"另存到桌面"文案换成"打包导出选中项(N)"，避免用户以为批量导出只能走顶部工具栏按钮
+  if (menuId === 'ctx-nine') {
+    const saveLabel = document.getElementById('ctx-nine-save-label');
+    const isBatch = nineGridSelectedIds.size > 1 && nineGridSelectedIds.has(nineCtxCurrentIdx);
+    if (saveLabel) {
+      saveLabel.innerHTML = isBatch
+        ? `<i class="ti ti-package"></i> 打包导出选中项 (${nineGridSelectedIds.size})`
+        : `<i class="ti ti-download"></i> 将此图另存到桌面`;
+    }
+    // 复制剪贴板 / 设为封面 只支持单张操作，多选时隐藏这两项，避免误导
+    const copyItem = document.getElementById('ctx-nine-copy-item');
+    const pinItem = document.getElementById('ctx-nine-pin-item');
+    if (copyItem) copyItem.style.display = isBatch ? 'none' : 'flex';
+    if (pinItem) pinItem.style.display = isBatch ? 'none' : 'flex';
   }
   const menu = document.getElementById(menuId);
   if (!menu) return;
@@ -1268,6 +1711,15 @@ async function handleCardImgCtx(action) {
       if (typeof startEditNote === 'function') startEditNote();
     }, 80);
   }
+
+  if (action === 'share') {
+    if (!shot) return showToast('该素材暂无图片可分享', 'warning');
+    generateShareLink(shot, item.title);
+  }
+
+  if (action === 'shareAll') {
+    shareWholeItem(item);
+  }
   
   if (action === 'delete') {
     if (!confirm(`确认将「${item.title}」移入物理防丢回收站？`)) return;
@@ -1433,13 +1885,37 @@ async function restoreSelectedTrash() {
   trashSelectedIds.clear(); scheduleSave(); renderSidebarStats(); renderTrashView(); showToast('✅ 已成功还原，数据已恢复');
 }
 
+// 🆕 v1.3：永久删除二次确认弹窗（替代浏览器原生 prompt），返回 Promise<boolean>
+let _confirmDeleteResolve = null;
+function openConfirmDeleteModal(count) {
+  const textEl = document.getElementById('confirm-delete-text');
+  if (textEl) textEl.textContent = `⚠️ 即将永久删除 ${count} 项内容，硬盘上的原始文件也会被一并彻底删除，此操作不可恢复！`;
+  const inp = document.getElementById('confirm-delete-input');
+  if (inp) inp.value = '';
+  const modal = document.getElementById('confirm-delete-modal');
+  if (modal) modal.classList.add('show');
+  return new Promise((resolve) => { _confirmDeleteResolve = resolve; });
+}
+function cancelConfirmDeleteModal() {
+  const modal = document.getElementById('confirm-delete-modal');
+  if (modal) modal.classList.remove('show');
+  if (_confirmDeleteResolve) { _confirmDeleteResolve(false); _confirmDeleteResolve = null; }
+}
+function confirmConfirmDeleteModal() {
+  const inp = document.getElementById('confirm-delete-input');
+  const typed = inp ? inp.value.trim() : '';
+  if (typed !== '删除') { showToast('输入内容不匹配，请重新输入「删除」两个字', 'warning'); return; }
+  const modal = document.getElementById('confirm-delete-modal');
+  if (modal) modal.classList.remove('show');
+  if (_confirmDeleteResolve) { _confirmDeleteResolve(true); _confirmDeleteResolve = null; }
+}
+
 async function permanentDeleteSelectedTrash() {
   if (trashSelectedIds.size === 0) return;
   const count = trashSelectedIds.size;
   // 不可逆的物理删除操作，要求手动输入"删除"二字确认，比单纯点确定按钮更安全，避免手滑误删物理文件
-  const typed = prompt(`⚠️ 即将永久删除 ${count} 项内容，硬盘上的原始文件也会被一并彻底删除，此操作不可恢复！\n\n请在下方输入「删除」两个字以确认继续：`);
-  if (typed === null) return; // 用户取消
-  if (typed.trim() !== '删除') { showToast('输入内容不匹配，已取消本次删除', 'warning'); return; }
+  const confirmed = await openConfirmDeleteModal(count);
+  if (!confirmed) return;
   for (const tid of Array.from(trashSelectedIds)) {
     const idx = DB.trash.findIndex(x => x.id === tid);
     if (idx !== -1) {
@@ -1725,13 +2201,19 @@ async function handleNineCtx(action) {
   }
   
   if (action === 'pin') {
-    item.shots.forEach((s, i) => s.pinned = (i === nineCtxCurrentIdx));
+    setPinnedShotAndReorder(item, nineCtxCurrentIdx);
+    nineGridSelectedIds.clear(); nineCtxCurrentIdx = -1; // 数组顺序已变化，清空索引缓存避免后续误选
     scheduleSave(); renderNineGrid(); renderDetailPanel(); renderLibraryGrid();
     showToast('⭐ 已设为该素材的专属封面');
   }
   
   if (action === 'note') {
     openShotNoteModal(item.id, shot.id);
+  }
+
+  if (action === 'share') {
+    if (isBatch) { shareSelectedShots(item, targetIdxs); return; }
+    generateShareLink(shot, item.title);
   }
   
   if (action === 'save') {
@@ -1835,6 +2317,13 @@ async function exportNineGridSelected() {
   } catch(e) {
     showToast('打包失败：' + e.message, 'error');
   }
+}
+
+// 🆕 v1.3：九宫格工具栏"分享所选"按钮入口（等价于多选后右键→生成分享链接）
+function shareNineGridSelected() {
+  const item = DB.items.find(i => i.id === currentNineGridItemId); if (!item) return;
+  if (nineGridSelectedIds.size === 0) return showToast('请先选中需要分享的图片', 'warning');
+  shareSelectedShots(item, Array.from(nineGridSelectedIds));
 }
 
 /* ═══════════════════════════════════════════════════════

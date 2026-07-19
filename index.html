@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>素材参考库 v1.2</title>
+<title>素材参考库 v1.3</title>
 <link rel="icon" type="image/png" href="icons/icon-32.png">
 <link rel="stylesheet" href="lib/tabler-icons.min.css">
 <style>
@@ -260,6 +260,7 @@ a { color: var(--txac); text-decoration: none; }
 #link-input { flex: 1; height: 30px; font-size: 11px; padding: 0 8px; border-radius: var(--radius-xs); border: 1px solid var(--bd); background: var(--s0); color: var(--tx); transition: border-color .15s; }
 #link-input:focus { border-color: var(--ac); }
 #link-input.error { border-color: var(--txdr) !important; background: var(--bgdr); }
+#request-key-name-input.error { border-color: var(--txdr) !important; background: var(--bgdr); }
 #link-add-btn { height: 30px; padding: 0 10px; border-radius: var(--radius-xs); border: 1px solid var(--bds); background: var(--s2); color: var(--tx2); font-size: 11px; cursor: pointer; transition: all .15s; }
 #link-add-btn:hover { background: var(--bgac); color: var(--txac); border-color: var(--ac); }
 #tiktok-error { font-size: 10px; color: var(--txdr); margin-top: 5px; background: var(--bgdr); padding: 4px 8px; border-radius: var(--radius-xs); display: none; line-height: 1.5; border: 1px solid rgba(184,50,40,0.2); }
@@ -448,13 +449,16 @@ a { color: var(--txac); text-decoration: none; }
 .custom-select-trigger { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; font-size: 13px; border: 1px solid var(--bd); background: var(--s0); color: var(--tx); border-radius: var(--radius-xs); cursor: pointer; user-select: none; }
 .custom-select-trigger:hover { border-color: var(--ac); }
 .custom-select-trigger i { color: var(--txm); font-size: 15px; }
-.custom-select-list { display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 256px; overflow-y: auto; background: var(--s1); border: 1px solid var(--bd); border-radius: var(--radius-xs); box-shadow: var(--shadow-lg); z-index: 60; }
-.custom-select-list.show { display: block; }
-.custom-select-option { padding: 8px 12px; font-size: 13px; cursor: pointer; color: var(--tx); }
+/* 🆕 v1.3：分类较多时改用双列网格展示 + 加大内边距/间距，避免看起来太挤，同时列表高度加大到 340px 再滚动 */
+.custom-select-list { display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 340px; overflow-y: auto; background: var(--s1); border: 1px solid var(--bd); border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); z-index: 60; padding: 6px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+.custom-select-list.show { display: grid; }
+.custom-select-option { padding: 9px 12px; font-size: 13px; cursor: pointer; color: var(--tx); border-radius: var(--radius-xs); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .custom-select-option:hover { background: var(--s2); }
 .custom-select-option.active { background: var(--bgac); color: var(--txac); font-weight: 600; }
 .form-textarea { min-height: 80px; resize: vertical; line-height: 1.5; }
 .form-input:focus, .form-textarea:focus, .form-select:focus { border-color: var(--ac); }
+/* 🆕 v1.3：新增素材弹窗整体加宽，配合双列分类网格，视觉上更舒展、不再局促 */
+#add-modal .modal { width: 600px; }
 
 #tag-input-wrap { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border: 1px solid var(--bd); border-radius: var(--radius-xs); background: var(--s0); min-height: 40px; cursor: text; transition: border-color .15s; }
 #tag-input-wrap:focus-within { border-color: var(--ac); box-shadow: 0 0 0 2px var(--bgac); }
@@ -524,11 +528,11 @@ a { color: var(--txac); text-decoration: none; }
     <div id="logo">
       <img src="icons/icon-48.png" id="logo-icon" alt="logo">
       <span id="logo-name">素材参考库</span>
-      <span id="logo-ver" title="点击手动检测更新" data-act="__h3" data-evt="click" data-act-args="[]" style="cursor:pointer;">v 1.2</span>
+      <span id="logo-ver" title="点击手动检测更新" data-act="__h3" data-evt="click" data-act-args="[]" style="cursor:pointer;">v 1.3</span>
     </div>
     <div id="search-wrap">
       <i class="ti ti-search"></i>
-      <input type="text" id="search" placeholder="全局智能搜索 (标题/标签/备注/账号)...">
+      <input type="text" id="search" placeholder="全局智能搜索 (标题/标签/备注/账号)..." data-act="h_searchInput" data-evt="input" data-act-args="[]">
     </div>
     <div id="net-status-pill" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;cursor:default;user-select:none;" title="当前网络状态：离线">
       <span id="net-dot" style="width:9px;height:9px;border-radius:50%;background:var(--txm);flex-shrink:0;transition:background .3s;"></span>
@@ -584,6 +588,11 @@ a { color: var(--txac); text-decoration: none; }
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
           <span id="save-status"><i class="ti ti-check"></i> 存储引擎就绪</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+          <span id="disk-usage-wrap" data-act="h_refreshDiskUsage" data-evt="click" data-act-args="[]" title="点击手动刷新占用统计" style="font-size:11px;color:var(--txm);cursor:pointer;display:flex;align-items:center;gap:4px;">
+            <i class="ti ti-device-sd-card"></i> 已占用 <span id="disk-usage-text">--</span>
+          </span>
         </div>
       </div>
     </nav>
@@ -759,6 +768,7 @@ a { color: var(--txac); text-decoration: none; }
       <div style="width:100%; display:flex; align-items:center; gap:8px; flex-wrap:wrap; border-top:0.5px solid var(--bd); padding-top:8px; margin-top:2px;">
         <button class="btn" style="height:28px; font-weight:600; color:var(--tx2);" id="btn-nine-select-all" data-act="__h41" data-evt="click" data-act-args="[]"><i class="ti ti-checks"></i> 全选</button>
         <button class="btn primary" style="height:28px;" data-act="__h42" data-evt="click" data-act-args="[]"><i class="ti ti-download"></i> 导出选中项 (<span id="nine-sel-count">0</span>)</button>
+        <button class="btn" style="height:28px;color:var(--ac);border-color:var(--ac);" data-act="h_shareNineSelected" data-evt="click" data-act-args="[]"><i class="ti ti-cloud-upload"></i> 分享所选</button>
         <button class="btn" style="height:28px;" id="btn-nine-view-mode" data-act="__h43" data-evt="click" data-act-args="[]" title="切换为思维导图展示风格"><i class="ti ti-sitemap"></i> 思维导图</button>
         <span style="border-left:1px solid var(--bd); height:20px; margin:0 4px;"></span>
         <div style="display:flex; align-items:center; gap:5px;" id="nine-col-wrap">
@@ -902,6 +912,18 @@ a { color: var(--txac); text-decoration: none; }
         </div>
       </div>
 
+      <!-- ── 分享服务区 ── -->
+      <div style="border-top:1px solid var(--bd);padding-top:18px;margin-top:6px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--txm);margin-bottom:12px;">图片分享服务</div>
+        <div class="set-row">
+          <div><div class="set-label">上传密钥 (API Key)</div><div class="set-desc">点击右侧「自助申请」，填个名字即可自动获取，仅保存在本机。</div></div>
+          <div class="set-control" style="gap:8px;">
+            <input type="password" class="form-select" id="set-share-apikey" placeholder="mk_xxxxxxxxxxxx" style="width:180px;font-family:monospace;" data-act="h_shareApiKeyChange" data-evt="change" data-act-args="[]">
+            <button class="btn primary" style="height:32px;white-space:nowrap;" data-act="h_openRequestKeyModal" data-evt="click" data-act-args="[]"><i class="ti ti-key"></i> 自助申请</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ── 数据工具区 ── -->
       <div style="border-top:1px solid var(--bd);padding-top:18px;margin-top:6px;">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--txm);margin-bottom:12px;">数据工具</div>
@@ -916,6 +938,92 @@ a { color: var(--txac); text-decoration: none; }
       </div>
     </div>
     <div class="modal-footer"><button class="btn primary" data-act="__h71" data-evt="click" data-act-args="[]">完成配置</button></div>
+  </div>
+</div>
+
+<!-- 🆕 v1.3：自助申请密钥弹窗 -->
+<div class="modal-overlay" id="request-key-modal">
+  <div class="modal" style="width:380px;">
+    <div class="modal-header">
+      <i class="ti ti-key" style="color:var(--ac);font-size:20px;margin-right:8px"></i>
+      <span class="modal-title">申请上传密钥</span>
+      <div class="modal-close" data-act="h_closeRequestKeyModal" data-evt="click" data-act-args="[]"><i class="ti ti-x"></i></div>
+    </div>
+    <div class="modal-body">
+      <label style="font-size:12px;font-weight:600;color:var(--tx2);display:block;margin-bottom:6px;">你的姓名</label>
+      <input type="text" id="request-key-name-input" class="form-input" placeholder="填写 2-6 个汉字，如：李小华" style="width:100%;" maxlength="6">
+      <div style="font-size:11px;color:var(--txm);margin-top:8px;line-height:1.6;">💡 提交后自动通过，密钥会直接填入上方输入框；同一台电脑重复申请会换发新密钥、旧密钥自动作废。</div>
+    </div>
+    <div class="modal-footer" style="gap:8px;">
+      <button class="btn" data-act="h_closeRequestKeyModal" data-evt="click" data-act-args="[]">取消</button>
+      <button class="btn primary" id="request-key-confirm-btn" data-act="h_confirmRequestKeyModal" data-evt="click" data-act-args="[]"><i class="ti ti-send"></i> 确认申请</button>
+    </div>
+  </div>
+</div>
+
+<!-- 分享结果弹窗 -->
+<div class="modal-overlay" id="share-result-modal">
+  <div class="modal" style="width:460px;">
+    <div class="modal-header">
+      <i class="ti ti-cloud-upload" style="color:var(--ac);font-size:20px;margin-right:8px"></i>
+      <span class="modal-title">分享链接已生成</span>
+      <div class="modal-close" data-act="h_closeShareModal" data-evt="click" data-act-args="[]"><i class="ti ti-x"></i></div>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:11px;color:var(--txm);margin-bottom:8px;">链接已自动复制到剪贴板，也可以手动复制或直接打开：</div>
+      <div id="share-result-link" style="word-break:break-all;font-family:monospace;font-size:12px;background:var(--s0);border:1px solid var(--bd);border-radius:var(--radius-sm);padding:10px 12px;line-height:1.6;"></div>
+      <div id="share-result-meta" style="display:none;margin-top:10px;font-size:12px;color:var(--tx2);background:var(--bgac);border:0.5px solid rgba(24,96,168,0.15);border-radius:var(--radius-xs);padding:8px 10px;line-height:1.6;"></div>
+    </div>
+    <div class="modal-footer" style="gap:8px;">
+      <button class="btn" data-act="h_openShareLink" data-evt="click" data-act-args="[]"><i class="ti ti-external-link"></i> 打开链接</button>
+      <button class="btn primary" data-act="h_copyShareLink" data-evt="click" data-act-args="[]"><i class="ti ti-copy"></i> 复制链接</button>
+    </div>
+  </div>
+</div>
+
+<!-- 🆕 v1.3：永久删除二次确认弹窗（替代浏览器原生 prompt()，风格与分享密码弹窗统一） -->
+<div class="modal-overlay" id="confirm-delete-modal">
+  <div class="modal" style="width:420px;">
+    <div class="modal-header">
+      <i class="ti ti-alert-triangle" style="color:#e0693b;font-size:20px;margin-right:8px"></i>
+      <span class="modal-title">危险操作确认</span>
+      <div class="modal-close" data-act="h_cancelConfirmDelete" data-evt="click" data-act-args="[]"><i class="ti ti-x"></i></div>
+    </div>
+    <div class="modal-body">
+      <div id="confirm-delete-text" style="font-size:12px;color:var(--tx2);line-height:1.7;margin-bottom:14px;"></div>
+      <label style="font-size:12px;font-weight:600;color:var(--tx2);display:block;margin-bottom:6px;">请输入「删除」两个字以确认继续</label>
+      <input type="text" id="confirm-delete-input" class="form-input" placeholder="删除" style="width:100%;">
+    </div>
+    <div class="modal-footer" style="gap:8px;">
+      <button class="btn" data-act="h_cancelConfirmDelete" data-evt="click" data-act-args="[]">取消</button>
+      <button class="btn primary" style="background:#e0693b;border-color:#e0693b;" data-act="h_confirmConfirmDelete" data-evt="click" data-act-args="[]"><i class="ti ti-trash"></i> 确定永久删除</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="share-password-modal">
+  <div class="modal" style="width:420px;">
+    <div class="modal-header">
+      <i class="ti ti-lock" style="color:var(--ac);font-size:20px;margin-right:8px"></i>
+      <span class="modal-title">分享设置</span>
+      <div class="modal-close" data-act="h_closeSharePwdModal" data-evt="click" data-act-args="[]"><i class="ti ti-x"></i></div>
+    </div>
+    <div class="modal-body">
+      <div id="share-pwd-target-label" style="font-size:12px;color:var(--txm);margin-bottom:14px;"></div>
+      <label style="font-size:12px;font-weight:600;color:var(--tx2);display:block;margin-bottom:6px;">链接有效期</label>
+      <select id="share-days-select" class="form-select" style="width:100%;margin-bottom:14px;">
+        <option value="1" selected>1 天（默认，到期后服务器自动删除）</option>
+        <option value="3">3 天</option>
+        <option value="5">5 天</option>
+        <option value="7">7 天</option>
+      </select>
+      <label style="font-size:12px;font-weight:600;color:var(--tx2);display:block;margin-bottom:6px;">访问密码（可选）</label>
+      <input type="text" id="share-pwd-input" class="form-input" placeholder="留空则任何人凭链接均可直接查看" style="width:100%;">
+      <div style="font-size:11px;color:var(--txm);margin-top:8px;line-height:1.6;">💡 设置密码后，对方打开链接需先输入此密码才能查看图片；请通过其他渠道另行告知对方密码。</div>
+    </div>
+    <div class="modal-footer" style="gap:8px;">
+      <button class="btn" data-act="h_closeSharePwdModal" data-evt="click" data-act-args="[]">取消</button>
+      <button class="btn primary" data-act="h_confirmSharePwdModal" data-evt="click" data-act-args="[]"><i class="ti ti-cloud-upload"></i> 生成分享链接</button>
+    </div>
   </div>
 </div>
 
@@ -992,8 +1100,8 @@ a { color: var(--txac); text-decoration: none; }
 <div class="ctx-menu" id="ctx-card">
   <div class="ctx-item" data-act="__h83" data-evt="click" data-act-args="[]"><i class="ti ti-edit"></i> 编辑素材属性</div>
   <div class="ctx-divider"></div>
-  <div class="ctx-item" data-act="__h84" data-evt="click" data-act-args="[]"><i class="ti ti-file-plus"></i> 登记全新素材</div>
-  <div class="ctx-item" data-act="__h85" data-evt="click" data-act-args="[]"><i class="ti ti-folder-plus"></i> 新建分类目录</div>
+  <div class="ctx-item" data-act="h_exportWholeItem" data-evt="click" data-act-args="[]"><i class="ti ti-package"></i> 导出整个素材</div>
+  <div class="ctx-item" data-act="h_shareWholeItemCard" data-evt="click" data-act-args="[]"><i class="ti ti-photo-share"></i> 分享整个素材</div>
   <div class="ctx-divider"></div>
   <div class="ctx-item danger" data-act="__h86" data-evt="click" data-act-args="[]"><i class="ti ti-trash"></i> 移入防丢回收站</div>
 </div>
@@ -1001,6 +1109,9 @@ a { color: var(--txac); text-decoration: none; }
 <div class="ctx-menu" id="ctx-card-img">
   <div class="ctx-item" data-act="__h87" data-evt="click" data-act-args="[]"><i class="ti ti-download"></i> 将此图另存到桌面</div>
   <div class="ctx-item" data-act="__h88" data-evt="click" data-act-args="[]"><i class="ti ti-copy"></i> 复制原图到系统剪贴板</div>
+  <div class="ctx-divider"></div>
+  <div class="ctx-item" data-act="h_shareCardImg" data-evt="click" data-act-args="[]"><i class="ti ti-cloud-upload"></i> 生成分享链接（仅封面图）</div>
+  <div class="ctx-item" data-act="h_shareAllCardImg" data-evt="click" data-act-args="[]"><i class="ti ti-photo-share"></i> 打包整个素材分享</div>
   <div class="ctx-divider"></div>
   <div class="ctx-item" data-act="__h89" data-evt="click" data-act-args="[]"><i class="ti ti-message-circle"></i> 记录图片专属灵感批注</div>
   <div class="ctx-divider"></div>
@@ -1013,10 +1124,11 @@ a { color: var(--txac); text-decoration: none; }
 </div>
 <!-- 九宫格画廊单图专属右键 -->
 <div class="ctx-menu" id="ctx-nine">
-  <div class="ctx-item" data-act="__h93" data-evt="click" data-act-args="[]"><i class="ti ti-download"></i> 将此图另存到桌面</div>
-  <div class="ctx-item" data-act="__h94" data-evt="click" data-act-args="[]"><i class="ti ti-copy"></i> 复制原图到系统剪贴板</div>
+  <div class="ctx-item" data-act="__h93" data-evt="click" data-act-args="[]" id="ctx-nine-save-label"><i class="ti ti-download"></i> 将此图另存到桌面</div>
+  <div class="ctx-item" data-act="__h94" data-evt="click" data-act-args="[]" id="ctx-nine-copy-item"><i class="ti ti-copy"></i> 复制原图到系统剪贴板</div>
   <div class="ctx-divider"></div>
-  <div class="ctx-item" data-act="__h95" data-evt="click" data-act-args="[]"><i class="ti ti-star"></i> 设为该素材封面</div>
+  <div class="ctx-item" data-act="__h95" data-evt="click" data-act-args="[]" id="ctx-nine-pin-item"><i class="ti ti-star"></i> 设为该素材封面</div>
+  <div class="ctx-item" data-act="h_shareNine" data-evt="click" data-act-args="[]"><i class="ti ti-cloud-upload"></i> 生成分享链接</div>
   <div class="ctx-item" data-act="__h96" data-evt="click" data-act-args="[]"><i class="ti ti-message-circle"></i> 记录图片专属灵感批注</div>
   <div class="ctx-divider"></div>
   <div class="ctx-item danger" data-act="__h97" data-evt="click" data-act-args="[]"><i class="ti ti-trash"></i> 把这张图扔进回收站</div>
@@ -1058,7 +1170,7 @@ a { color: var(--txac); text-decoration: none; }
       <!-- 提示 -->
       <div style="font-size:11px;color:var(--txm);display:flex;align-items:flex-start;gap:7px;background:var(--bgac);border-radius:var(--radius-xs);padding:10px 12px;border:0.5px solid rgba(24,96,168,0.15);line-height:1.6;">
         <i class="ti ti-info-circle" style="color:var(--ac);flex-shrink:0;margin-top:1px;font-size:14px;"></i>
-        <span>下载后直接用浏览器打开新 HTML 文件，您的本地数据文件夹无需迁移，重新连接即可继续使用。</span>
+        <span>下载新版本压缩包后，解压覆盖原插件文件夹，再打开 chrome://extensions 点击刷新按钮重新加载扩展即可；本地数据文件夹无需迁移，重新连接硬盘即可继续使用。</span>
       </div>
     </div>
     <div class="modal-footer" style="padding:14px 24px;">
